@@ -11,7 +11,7 @@ import {
   Toast,
   useNavigation,
 } from "@raycast/api";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { deleteSkill, loadSkills, Skill } from "./utils/skills";
 import AddSkill from "./add-skill";
 
@@ -27,6 +27,7 @@ export default function ListSkills() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchText, setSearchText] = useState("");
+  const [selectedTag, setSelectedTag] = useState("__all__");
   const { push } = useNavigation();
 
   async function refresh() {
@@ -45,19 +46,24 @@ export default function ListSkills() {
     refresh();
   }, []);
 
+  const allTags = useMemo(() => {
+    return Array.from(new Set(skills.flatMap((skill) => skill.tags))).sort((a, b) => a.localeCompare(b));
+  }, [skills]);
+
   const filtered = skills.filter((s) => {
     const q = searchText.toLowerCase();
-    return (
+    const matchesQuery =
       s.name.toLowerCase().includes(q) ||
       s.description.toLowerCase().includes(q) ||
-      s.tags.some((t) => t.toLowerCase().includes(q))
-    );
+      s.tags.some((t) => t.toLowerCase().includes(q));
+    const matchesTag = selectedTag === "__all__" || s.tags.includes(selectedTag);
+    return matchesQuery && matchesTag;
   });
 
   async function handleDelete(skill: Skill) {
     const confirmed = await confirmAlert({
       title: `Delete "${skill.name}"?`,
-      message: "This will remove the skill from your skills.md file.",
+      message: "This will remove the skill folder from your central agents skills directory.",
       primaryAction: { title: "Delete", style: Alert.ActionStyle.Destructive },
     });
     if (!confirmed) return;
@@ -113,6 +119,14 @@ export default function ListSkills() {
       searchText={searchText}
       onSearchTextChange={setSearchText}
       searchBarPlaceholder="Search skills by name, description or tag…"
+      searchBarAccessory={
+        <List.Dropdown tooltip="Filter by tag" value={selectedTag} onChange={setSelectedTag}>
+          <List.Dropdown.Item title="All Tags" value="__all__" />
+          {allTags.map((tag) => (
+            <List.Dropdown.Item key={tag} title={tag} value={tag} />
+          ))}
+        </List.Dropdown>
+      }
       isShowingDetail
     >
       {filtered.length === 0 && !isLoading ? (
@@ -122,11 +136,7 @@ export default function ListSkills() {
           description="Use 'Add Skill' to create your first skill."
           actions={
             <ActionPanel>
-              <Action
-                title="Add Skill"
-                icon={Icon.Plus}
-                onAction={() => push(<AddSkill onSave={refresh} />)}
-              />
+              <Action title="Add Skill" icon={Icon.Plus} onAction={() => push(<AddSkill onSave={refresh} />)} />
             </ActionPanel>
           }
         />

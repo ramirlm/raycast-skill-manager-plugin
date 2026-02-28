@@ -1,13 +1,4 @@
-import {
-  Action,
-  ActionPanel,
-  Form,
-  Icon,
-  List,
-  showToast,
-  Toast,
-  useNavigation,
-} from "@raycast/api";
+import { Action, ActionPanel, Form, Icon, List, showToast, Toast, useNavigation } from "@raycast/api";
 import { useState } from "react";
 import { loadSkills } from "./utils/skills";
 import { AGENT_TARGETS, distributeToTarget, expandHome } from "./utils/agents";
@@ -98,10 +89,7 @@ function DistributeForm({ onDone }: { onDone: () => void }) {
         }
       />
       {(skills ?? []).length === 0 && !isLoading && (
-        <Form.Description
-          title="⚠️  No skills found"
-          text="Add some skills first using the 'Add Skill' command."
-        />
+        <Form.Description title="⚠️  No skills found" text="Add some skills first using the 'Add Skill' command." />
       )}
     </Form>
   );
@@ -119,8 +107,8 @@ export default function DistributeSkills() {
   const subtitle = lastDistributed
     ? `Last distributed: ${lastDistributed.toLocaleTimeString()}`
     : skills
-    ? `${skills.length} skill(s) ready to distribute`
-    : "Loading…";
+      ? `${skills.length} skill(s) ready to distribute`
+      : "Loading…";
 
   return (
     <List isLoading={isLoading} navigationTitle="Distribute Skills">
@@ -136,17 +124,13 @@ export default function DistributeSkills() {
                 <Action
                   title={`Distribute to ${target.label}`}
                   icon={Icon.Upload}
-                  onAction={() =>
-                    push(<DistributeForm onDone={() => setLastDistributed(new Date())} />)
-                  }
+                  onAction={() => push(<DistributeForm onDone={() => setLastDistributed(new Date())} />)}
                 />
                 <Action
                   title="Distribute to All Targets"
                   icon={Icon.Globe}
                   shortcut={{ modifiers: ["cmd"], key: "d" }}
-                  onAction={() =>
-                    push(<DistributeForm onDone={() => setLastDistributed(new Date())} />)
-                  }
+                  onAction={() => push(<DistributeForm onDone={() => setLastDistributed(new Date())} />)}
                 />
               </ActionPanel>
             }

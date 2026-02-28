@@ -1,16 +1,28 @@
 # Raycast Skill Manager Plugin
 
-A Raycast extension to manage a central `skills.md` file, distribute skill definitions to popular coding-agent configuration files, and create Raycast snippets from individual skills.
+A comprehensive Raycast extension to manage skills across multiple coding agents with a centralized architecture. Import skills from GitHub, sync them between agents, and create Raycast snippets—all from one unified interface.
 
 ## Features
 
+## Architecture
+
+**Central Skills Folder**: `~/agents/skills` (configurable)  
+This is your **source of truth** for all skill files. Each skill is a folder containing a `SKILL.md` file.
+
+**Codex Integration**: `~/.codex/skills` (configurable)  
+Skills are symlinked to maintain compatibility with Codex and other agents.
+
 ### Commands
 
-| Command | Description |
-|---|---|
-| **List Skills** | Browse, search, and manage all skills. Supports creating Raycast snippets and copying skill text. |
-| **Add Skill** | Create a new skill or edit an existing one with a name, Markdown description, and optional tags. |
-| **Distribute Skills** | Inject your skills into one or more coding-agent config files inside any project directory. |
+| Command                         | Description                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **List Skills**                 | Browse, search, and manage all skills. Supports creating Raycast snippets and copying skill text. |
+| **Add Skill**                   | Create a new skill or edit an existing one with a name, Markdown description, and optional tags.  |
+| **Distribute Skills**           | Inject your skills into one or more coding-agent config files inside any project directory.       |
+| **Import Skill from GitHub**    | Import skill folders or SKILL.md files directly from GitHub repositories.                         |
+| **Import GitHub Repo as Skill** | Transform a GitHub repository into a skill using `opensrc` and import it into the central folder. |
+| **Sync Skills**                 | Sync skills from Codex to central folder and create symlinks for bi-directional compatibility.    |
+| **Manage Agents**               | View detected agents, skill folders, and their status across your system.                         |
 
 ### Supported Coding Agent Targets
 
@@ -26,10 +38,12 @@ A Raycast extension to manage a central `skills.md` file, distribute skill defin
 # Skills
 
 ## TypeScript
+
 [tags: frontend, typing]
 Use strict TypeScript. Prefer `unknown` over `any`. Always type function return values.
 
 ## TDD
+
 [tags: testing, workflow]
 Write tests before implementation. Use the red–green–refactor cycle.
 ```
@@ -42,9 +56,32 @@ Select a skill in the **List Skills** command and press **⌘S** to generate a R
 
 ## Preferences
 
-| Preference | Default | Description |
-|---|---|---|
-| `skillsFilePath` | `~/skills.md` | Absolute or `~`-relative path to your central skills file. |
+| Preference            | Default           | Description                                                         |
+| --------------------- | ----------------- | ------------------------------------------------------------------- |
+| `skillsFilePath`      | `~/skills.md`     | Absolute or `~`-relative path to your central skills file (legacy). |
+| `centralSkillsFolder` | `~/agents/skills` | Central folder for skill files (source of truth).                   |
+| `codexSkillsFolder`   | `~/.codex/skills` | Path to .codex/skills folder for Codex integration.                 |
+| `githubToken`         | -                 | Optional GitHub Personal Access Token for private repositories.     |
+
+## Workflow Examples
+
+### Initial Setup
+
+1. Run **Sync Skills** to copy existing skills from `~/.codex/skills` to `~/agents/skills`
+2. Symlinks are automatically created to maintain compatibility
+
+### Import New Skills
+
+1. Use **Import Skill from GitHub** with URLs like:
+   - `https://github.com/owner/repo/tree/main/skills/my-skill`
+   - `owner/repo/path/to/skill` (shorthand)
+2. Skills are downloaded to central folder and optionally linked to Codex
+
+### Distribute to Projects
+
+1. Run **Distribute Skills** to inject skills into project config files
+2. Select target agents (Cursor, Windsurf, GitHub Copilot, Claude, Aider)
+3. Skills are added with managed comment blocks for easy updates
 
 ## Development
 
@@ -54,3 +91,9 @@ npm run dev     # Live-reload development
 npm run build   # Production build
 npm run lint    # Lint sources
 ```
+
+## Security
+
+- GitHub tokens are stored securely using Raycast's password preference type
+- All file operations use proper path resolution and validation
+- Symlinks are created safely with conflict detection

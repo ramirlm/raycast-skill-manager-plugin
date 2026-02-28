@@ -1,11 +1,6 @@
 import { promises as fs } from "fs";
-import { homedir } from "os";
 import path from "path";
-import { getPreferenceValues } from "@raycast/api";
-
-interface Preferences {
-  skillsFilePath: string;
-}
+import { getCentralSkillsPath, importMissingSkillsFromAgents } from "./central-skills";
 
 export interface Skill {
   name: string;
@@ -13,27 +8,108 @@ export interface Skill {
   tags: string[];
 }
 
-function resolveSkillsFilePath(): string {
-  const { skillsFilePath } = getPreferenceValues<Preferences>();
-  const resolved = skillsFilePath.replace(/^~/, homedir());
-  return path.resolve(resolved);
+interface LoadSkillsOptions {
+  autoImportFromAgents?: boolean;
 }
 
-export function getSkillsFilePath(): string {
-  return resolveSkillsFilePath();
+const TAG_LINE_RE = /^\[tags:\s*([^\]]*)\]\s*$/i;
+
+function sanitizeSkillFolderName(name: string): string {
+  return (
+    name
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, "-")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "") || "untitled-skill"
+  );
+}
+
+function parseTagsFromLine(line: string): string[] {
+  const match = line.trim().match(TAG_LINE_RE);
+  if (!match) {
+    return [];
+  }
+  return match[1]
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function renderSkillMarkdown(skill: Skill): string {
+  const tagsLine = skill.tags.length > 0 ? `[tags: ${skill.tags.join(", ")}]\n\n` : "\n";
+  const description = skill.description.trim();
+  return `# ${skill.name}\n${tagsLine}${description}\n`;
+}
+
+async function readSkillFromFolder(skillFolderPath: string, fallbackName: string): Promise<Skill | null> {
+  const skillMdPath = path.join(skillFolderPath, "SKILL.md");
+  let content: string;
+  try {
+    content = await fs.readFile(skillMdPath, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw err;
+  }
+
+  const lines = content.split("\n");
+  let name = fallbackName;
+  let start = 0;
+
+  if (lines[0]?.trim().startsWith("#")) {
+    name = lines[0].replace(/^#+\s*/, "").trim() || fallbackName;
+    start = 1;
+  }
+
+  let tags: string[] = [];
+  let tagLineIndex = -1;
+  for (let i = start; i < lines.length; i++) {
+    if (!lines[i].trim()) {
+      continue;
+    }
+    const parsedTags = parseTagsFromLine(lines[i]);
+    if (parsedTags.length > 0 || TAG_LINE_RE.test(lines[i].trim())) {
+      tags = parsedTags;
+      tagLineIndex = i;
+    }
+    break;
+  }
+
+  const descriptionLines: string[] = [];
+  for (let i = start; i < lines.length; i++) {
+    if (i === tagLineIndex) {
+      continue;
+    }
+    descriptionLines.push(lines[i]);
+  }
+  const description = descriptionLines.join("\n").trim();
+
+  return { name, description, tags };
+}
+
+async function findSkillFolderByName(name: string): Promise<string | null> {
+  const centralPath = getCentralSkillsPath();
+  const entries = await fs.readdir(centralPath, { withFileTypes: true });
+  const target = entries.find(
+    (entry) => (entry.isDirectory() || entry.isSymbolicLink()) && entry.name.toLowerCase() === name.toLowerCase(),
+  );
+  return target ? path.join(centralPath, target.name) : null;
 }
 
 /**
- * Parse a skills.md file into an array of Skill objects.
- *
- * Expected format:
- * ## Skill Name
- * [tags: tag1, tag2]
- * Description text
+ * Legacy helper retained for compatibility. Skills are now folder-based in central skills.
+ */
+export function getSkillsFilePath(): string {
+  return path.join(getCentralSkillsPath(), "skills.md");
+}
+
+/**
+ * Legacy parser retained for compatibility with older markdown list format.
  */
 export function parseSkillsMarkdown(content: string): Skill[] {
   const skills: Skill[] = [];
-  // Split on level-2 headings
   const sections = content.split(/^##\s+/m).filter((s) => s.trim().length > 0);
 
   for (const section of sections) {
@@ -43,23 +119,19 @@ export function parseSkillsMarkdown(content: string): Skill[] {
 
     const bodyLines = lines.slice(1);
     let tags: string[] = [];
-
-    // Look for optional [tags: ...] line
     const tagLineIndex = bodyLines.findIndex((l) => /^\[tags:/i.test(l.trim()));
     if (tagLineIndex !== -1) {
       const tagMatch = bodyLines[tagLineIndex].match(/\[tags:\s*([^\]]+)\]/i);
       if (tagMatch) {
-        tags = tagMatch[1].split(",").map((t) => t.trim()).filter(Boolean);
+        tags = tagMatch[1]
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
       }
       bodyLines.splice(tagLineIndex, 1);
     }
 
-    const description = bodyLines
-      .join("\n")
-      .trim()
-      // Strip leading H1 line if present (e.g. "# Skills")
-      .replace(/^#[^#][^\n]*\n?/, "");
-
+    const description = bodyLines.join("\n").trim();
     skills.push({ name, description, tags });
   }
 
@@ -67,12 +139,11 @@ export function parseSkillsMarkdown(content: string): Skill[] {
 }
 
 /**
- * Serialize an array of Skill objects back to skills.md content.
+ * Legacy serializer retained for compatibility with older markdown list format.
  */
 export function serializeSkillsMarkdown(skills: Skill[]): string {
   const header = "# Skills\n\n";
   if (skills.length === 0) return header;
-
   const body = skills
     .map((skill) => {
       const tagLine = skill.tags.length > 0 ? `[tags: ${skill.tags.join(", ")}]\n` : "";
@@ -84,51 +155,75 @@ export function serializeSkillsMarkdown(skills: Skill[]): string {
 }
 
 /**
- * Read and parse skills from the configured skills.md path.
- * Creates the file with an empty header if it doesn't exist.
+ * Load skills from central folder (`~/agents/skills`) by reading each `SKILL.md`.
  */
-export async function loadSkills(): Promise<Skill[]> {
-  const filePath = getSkillsFilePath();
-  try {
-    const content = await fs.readFile(filePath, "utf8");
-    return parseSkillsMarkdown(content);
-  } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-      await fs.writeFile(filePath, "# Skills\n", "utf8");
-      return [];
+export async function loadSkills(options: LoadSkillsOptions = {}): Promise<Skill[]> {
+  const autoImportFromAgents = options.autoImportFromAgents ?? true;
+  if (autoImportFromAgents) {
+    try {
+      await importMissingSkillsFromAgents();
+    } catch {
+      // Listing should still work even if an agent folder is unavailable.
     }
-    throw err;
   }
+
+  const centralPath = getCentralSkillsPath();
+  await fs.mkdir(centralPath, { recursive: true });
+
+  const entries = await fs.readdir(centralPath, { withFileTypes: true });
+  const skills: Skill[] = [];
+
+  for (const entry of entries) {
+    if ((!entry.isDirectory() && !entry.isSymbolicLink()) || entry.name.startsWith(".")) {
+      continue;
+    }
+
+    const folderPath = path.join(centralPath, entry.name);
+    try {
+      const stat = await fs.stat(folderPath);
+      if (!stat.isDirectory()) {
+        continue;
+      }
+    } catch {
+      continue;
+    }
+
+    const parsed = await readSkillFromFolder(folderPath, entry.name);
+    if (parsed) {
+      skills.push(parsed);
+    }
+  }
+
+  return skills.sort((a, b) => a.name.localeCompare(b.name));
 }
 
 /**
- * Save an array of skills to the configured skills.md path.
- */
-export async function saveSkills(skills: Skill[]): Promise<void> {
-  const filePath = getSkillsFilePath();
-  const content = serializeSkillsMarkdown(skills);
-  await fs.writeFile(filePath, content, "utf8");
-}
-
-/**
- * Add or update a skill. If a skill with the same name already exists it is replaced.
+ * Save to folder-based storage. Existing folder name is reused when updating.
  */
 export async function upsertSkill(skill: Skill): Promise<void> {
-  const skills = await loadSkills();
-  const index = skills.findIndex((s) => s.name.toLowerCase() === skill.name.toLowerCase());
-  if (index !== -1) {
-    skills[index] = skill;
-  } else {
-    skills.push(skill);
-  }
-  await saveSkills(skills);
+  const centralPath = getCentralSkillsPath();
+  await fs.mkdir(centralPath, { recursive: true });
+
+  const existingFolder = await findSkillFolderByName(skill.name);
+  const folderName = existingFolder ? path.basename(existingFolder) : sanitizeSkillFolderName(skill.name);
+  const folderPath = path.join(centralPath, folderName);
+  const skillMdPath = path.join(folderPath, "SKILL.md");
+
+  await fs.mkdir(folderPath, { recursive: true });
+  await fs.writeFile(skillMdPath, renderSkillMarkdown(skill), "utf8");
 }
 
 /**
- * Delete a skill by name.
+ * Delete skill folder by matching folder name case-insensitively.
  */
 export async function deleteSkill(name: string): Promise<void> {
-  const skills = await loadSkills();
-  const updated = skills.filter((s) => s.name.toLowerCase() !== name.toLowerCase());
-  await saveSkills(updated);
+  const centralPath = getCentralSkillsPath();
+  await fs.mkdir(centralPath, { recursive: true });
+
+  const folderPath = await findSkillFolderByName(name);
+  if (!folderPath) {
+    return;
+  }
+
+  await fs.rm(folderPath, { recursive: true, force: true });
 }

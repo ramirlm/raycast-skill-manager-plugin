@@ -75,11 +75,7 @@ export function injectSkillsBlock(existingContent: string, skillsBlock: string):
  * Distribute skills to a given agent target file.
  * Creates intermediate directories if needed.
  */
-export async function distributeToTarget(
-  target: AgentTarget,
-  projectRoot: string,
-  skills: Skill[],
-): Promise<void> {
+export async function distributeToTarget(target: AgentTarget, projectRoot: string, skills: Skill[]): Promise<void> {
   const filePath = target.resolvePath(projectRoot);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
 
