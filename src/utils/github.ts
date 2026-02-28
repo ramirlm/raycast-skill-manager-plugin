@@ -59,22 +59,44 @@ function describeRepositorySource(parsed: GitHubRepoReference): string {
   return `${parsed.owner}/${parsed.repo}${parsed.branch ? `@${parsed.branch}` : ""}`;
 }
 
+function escapeYamlDoubleQuoted(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 function renderRepoSkillMarkdown(
   parsed: GitHubRepoReference,
   metadata: GitHubRepoMetadata | undefined,
   sourceSummary: string,
   topLevelItems: string[],
+  skillTitle: string,
+  includeAutoTags: boolean,
+  warnings: string[],
 ): string {
   const tags = ["github", "repository", metadata?.language ? metadata.language.toLowerCase() : null].filter(
     Boolean,
   ) as string[];
+  const description =
+    metadata?.description ||
+    `Skill generated from repository ${parsed.owner}/${parsed.repo}. Use this when working with this codebase.`;
 
   const lines: string[] = [];
-  lines.push(`# ${parsed.owner}/${parsed.repo}`);
+  lines.push("---");
+  lines.push(`name: "${escapeYamlDoubleQuoted(skillTitle)}"`);
+  lines.push(`description: "${escapeYamlDoubleQuoted(description)}"`);
+  lines.push("---");
   lines.push("");
-  lines.push(`[tags: ${tags.join(", ")}]`);
+  lines.push(`# ${skillTitle}`);
+  if (includeAutoTags && tags.length > 0) {
+    lines.push("");
+    lines.push(`[tags: ${tags.join(", ")}]`);
+  }
   lines.push("");
-  lines.push(metadata?.description || "No repository description provided.");
+  lines.push(description);
+  lines.push("");
+  lines.push("## When to use");
+  lines.push(`- Use when the task is about the repository \`${parsed.owner}/${parsed.repo}\`.`);
+  lines.push("- Consult `references/repository/` for repository files imported by opensrc.");
+  lines.push("- Keep this skill as the canonical context for this repository.");
   lines.push("");
   lines.push("## Repository");
   lines.push(`- Source: https://github.com/${parsed.owner}/${parsed.repo}`);
@@ -100,6 +122,13 @@ function renderRepoSkillMarkdown(
   lines.push("## Top-level Layout");
   for (const item of topLevelItems) {
     lines.push(`- ${item}`);
+  }
+  if (warnings.length > 0) {
+    lines.push("");
+    lines.push("## Import Notes");
+    for (const warning of warnings) {
+      lines.push(`- ${warning}`);
+    }
   }
 
   return lines.join("\n");
@@ -421,7 +450,11 @@ export function parseGitHubUrl(url: string): {
  * Import a GitHub repository as a full skill folder in the central skills path.
  * The repository is first fetched via opensrc.
  */
-export async function importGitHubRepoAsSkill(url: string, skillNameOverride?: string): Promise<string> {
+export async function importGitHubRepoAsSkill(
+  url: string,
+  skillNameOverride?: string,
+  includeAutoTags = false,
+): Promise<string> {
   const parsed = parseGitHubRepoUrl(url);
   if (!parsed) {
     throw new Error("Invalid GitHub repository format. Use github:owner/repo or a GitHub repo URL.");
@@ -430,8 +463,11 @@ export async function importGitHubRepoAsSkill(url: string, skillNameOverride?: s
   await ensureCentralSkillsFolder();
 
   const sourceMetadata = await fetchGitHubRepoMetadata(parsed.owner, parsed.repo);
-  const normalizedSkillName = sanitizeSkillFolderName(skillNameOverride || parsed.repo);
+  const skillTitle = (skillNameOverride || parsed.repo).trim();
+  const normalizedSkillName = sanitizeSkillFolderName(skillTitle);
   const destPath = path.join(getCentralSkillsPath(), normalizedSkillName);
+  const repoSnapshotPath = path.join(destPath, "references", "repository");
+  const warnings: string[] = [];
 
   // Ensure destination doesn't already exist
   try {
@@ -443,21 +479,47 @@ export async function importGitHubRepoAsSkill(url: string, skillNameOverride?: s
     }
   }
 
-  const opened = await runOpenSrcAndLocateSource(parsed);
+  await fs.mkdir(destPath, { recursive: true });
+
+  let sourceSummary = "";
+  let topLevelItems: string[] = [];
+  let opened:
+    | {
+        workingDir: string;
+        sourcePath: string;
+      }
+    | undefined;
+
   try {
-    await copySkillFolder(opened.sourcePath, destPath);
-
+    opened = await runOpenSrcAndLocateSource(parsed);
+    try {
+      await copySkillFolder(opened.sourcePath, repoSnapshotPath);
+    } catch (err) {
+      warnings.push(`Repository snapshot copy had partial failures: ${String(err)}`);
+    }
     const entries = await fs.readdir(opened.sourcePath, { withFileTypes: true });
-    const topLevelItems = selectTopLevelItems(entries);
-    const sourceSummary = await readRepositoryOverview(opened.sourcePath);
-    const skillMarkdown = renderRepoSkillMarkdown(parsed, sourceMetadata, sourceSummary, topLevelItems);
-
-    await fs.writeFile(path.join(destPath, "SKILL.md"), skillMarkdown, "utf8");
+    topLevelItems = selectTopLevelItems(entries);
+    sourceSummary = await readRepositoryOverview(opened.sourcePath);
+  } catch (err) {
+    warnings.push(`opensrc snapshot not available: ${String(err)}`);
   } finally {
-    await fs.rm(opened.workingDir, { recursive: true, force: true });
+    if (opened) {
+      await fs.rm(opened.workingDir, { recursive: true, force: true });
+    }
   }
 
-  return normalizedSkillName;
+  const skillMarkdown = renderRepoSkillMarkdown(
+    parsed,
+    sourceMetadata,
+    sourceSummary,
+    topLevelItems,
+    skillTitle,
+    includeAutoTags,
+    warnings,
+  );
+  await fs.writeFile(path.join(destPath, "SKILL.md"), skillMarkdown, "utf8");
+
+  return skillTitle;
 }
 
 /**

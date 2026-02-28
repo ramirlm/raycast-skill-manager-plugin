@@ -7,7 +7,7 @@ export default function ImportSkillFromGitHub() {
   const { pop } = useNavigation();
   const [urlError, setUrlError] = useState<string | undefined>();
 
-  async function handleSubmit(values: { url: string; skillName?: string; createSymlink: boolean }) {
+  async function handleSubmit(values: { url: string; skillName?: string; autoTag: boolean; createSymlink: boolean }) {
     const url = values.url.trim();
     const skillNameOverride = values.skillName?.trim();
 
@@ -26,7 +26,7 @@ export default function ImportSkillFromGitHub() {
       if (isSkillPathImport) {
         skillName = await importSkillFromGitHub(url);
       } else if (isRepoImport) {
-        skillName = await importGitHubRepoAsSkill(url, skillNameOverride);
+        skillName = await importGitHubRepoAsSkill(url, skillNameOverride, values.autoTag);
       } else {
         throw new Error(
           "Invalid GitHub URL format. Use owner/repo, repo URL, or a blob/tree URL pointing to SKILL.md/folder.",
@@ -74,9 +74,15 @@ export default function ImportSkillFromGitHub() {
       />
       <Form.TextField
         id="skillName"
-        title="Skill folder name (optional)"
-        placeholder="fallback: repository name"
-        info="Used for repo imports. If empty, the repository name is used."
+        title="Skill name (optional)"
+        placeholder="Fallback: repository name"
+        info="Used for repository imports. If empty, repository name is used."
+      />
+      <Form.Checkbox
+        id="autoTag"
+        label="Auto-tag imported skill"
+        defaultValue={false}
+        info="Disabled by default. Enable only if you explicitly want automatic tags."
       />
       <Form.Checkbox
         id="createSymlink"

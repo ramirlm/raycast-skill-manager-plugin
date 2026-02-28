@@ -6,6 +6,8 @@ export interface Skill {
   name: string;
   description: string;
   tags: string[];
+  folderPath?: string;
+  skillFilePath?: string;
 }
 
 interface LoadSkillsOptions {
@@ -57,10 +59,38 @@ async function readSkillFromFolder(skillFolderPath: string, fallbackName: string
   const lines = content.split("\n");
   let name = fallbackName;
   let start = 0;
+  let frontmatterDescription = "";
 
-  if (lines[0]?.trim().startsWith("#")) {
-    name = lines[0].replace(/^#+\s*/, "").trim() || fallbackName;
-    start = 1;
+  if (lines[0]?.trim() === "---") {
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line === "---") {
+        start = i + 1;
+        break;
+      }
+      const nameMatch = line.match(/^name:\s*["']?(.+?)["']?$/i);
+      if (nameMatch && nameMatch[1].trim()) {
+        name = nameMatch[1].trim();
+      }
+      const descriptionMatch = line.match(/^description:\s*["']?(.+?)["']?$/i);
+      if (descriptionMatch && descriptionMatch[1].trim()) {
+        frontmatterDescription = descriptionMatch[1].trim();
+      }
+    }
+  }
+
+  let headingLineIndex = -1;
+  for (let i = start; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) {
+      continue;
+    }
+    if (line.startsWith("#")) {
+      name = line.replace(/^#+\s*/, "").trim() || name;
+      headingLineIndex = i;
+      start = i + 1;
+    }
+    break;
   }
 
   let tags: string[] = [];
@@ -79,14 +109,14 @@ async function readSkillFromFolder(skillFolderPath: string, fallbackName: string
 
   const descriptionLines: string[] = [];
   for (let i = start; i < lines.length; i++) {
-    if (i === tagLineIndex) {
+    if (i === tagLineIndex || i === headingLineIndex) {
       continue;
     }
     descriptionLines.push(lines[i]);
   }
-  const description = descriptionLines.join("\n").trim();
+  const description = descriptionLines.join("\n").trim() || frontmatterDescription;
 
-  return { name, description, tags };
+  return { name, description, tags, folderPath: skillFolderPath, skillFilePath: skillMdPath };
 }
 
 async function findSkillFolderByName(name: string): Promise<string | null> {

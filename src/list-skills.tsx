@@ -23,6 +23,15 @@ function skillToSnippetText(skill: Skill): string {
   return `${skill.name}${tagLine}\n\n${skill.description}`;
 }
 
+function skillToMarkdownLink(skill: Skill): string {
+  const skillPath = skill.skillFilePath;
+  const skillLabel = `$${skill.name}`.replace(/\]/g, "\\]");
+  if (!skillPath) {
+    return `[${skillLabel}](SKILL.md)`;
+  }
+  return `[${skillLabel}](${skillPath})`;
+}
+
 export default function ListSkills() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -81,6 +90,12 @@ export default function ListSkills() {
     const text = skillToSnippetText(skill);
     await Clipboard.copy(text);
     await showToast({ style: Toast.Style.Success, title: "Copied to clipboard", message: skill.name });
+  }
+
+  async function handleCopyMarkdownLink(skill: Skill) {
+    const link = skillToMarkdownLink(skill);
+    await Clipboard.copy(link);
+    await showToast({ style: Toast.Style.Success, title: "Markdown link copied", message: skill.name });
   }
 
   /**
@@ -176,6 +191,18 @@ export default function ListSkills() {
                     icon={Icon.Clipboard}
                     shortcut={{ modifiers: ["cmd"], key: "c" }}
                     onAction={() => handleCopySnippet(skill)}
+                  />
+                  <Action
+                    title="Copy Markdown Skill Link"
+                    icon={Icon.Link}
+                    shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
+                    onAction={() => handleCopyMarkdownLink(skill)}
+                  />
+                  <Action.Paste
+                    title="Paste Markdown Skill Link"
+                    icon={Icon.Link}
+                    shortcut={{ modifiers: ["cmd", "shift"], key: "v" }}
+                    content={skillToMarkdownLink(skill)}
                   />
                 </ActionPanel.Section>
                 <ActionPanel.Section title="Manage">

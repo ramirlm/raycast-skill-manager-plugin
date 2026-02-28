@@ -7,7 +7,7 @@ export default function ImportRepoAsSkill() {
   const { pop } = useNavigation();
   const [repoError, setRepoError] = useState<string | undefined>();
 
-  async function handleSubmit(values: { repo: string; skillName?: string; createSymlink: boolean }) {
+  async function handleSubmit(values: { repo: string; skillName?: string; autoTag: boolean; createSymlink: boolean }) {
     const repo = values.repo.trim();
     const preferredName = values.skillName?.trim();
 
@@ -19,7 +19,7 @@ export default function ImportRepoAsSkill() {
     const toast = await showToast({ style: Toast.Style.Animated, title: "Importing repository..." });
 
     try {
-      const skillName = await importGitHubRepoAsSkill(repo, preferredName);
+      const skillName = await importGitHubRepoAsSkill(repo, preferredName, values.autoTag);
 
       if (values.createSymlink) {
         await createSymlinksToCodex();
@@ -61,9 +61,15 @@ export default function ImportRepoAsSkill() {
       />
       <Form.TextField
         id="skillName"
-        title="Skill folder name"
-        placeholder="repo-name (optional)"
-        info="Optional. Leave empty to use repository name."
+        title="Skill name (optional)"
+        placeholder="Fallback: repository name"
+        info="Used as skill title. Folder name is generated from this value."
+      />
+      <Form.Checkbox
+        id="autoTag"
+        label="Auto-tag imported skill"
+        defaultValue={false}
+        info="Disabled by default. Enable only when you want automatic tags added."
       />
       <Form.Checkbox
         id="createSymlink"
