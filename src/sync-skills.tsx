@@ -1,7 +1,8 @@
-import { Action, ActionPanel, Color, Icon, List, showToast, Toast } from "@raycast/api";
+import { Action, ActionPanel, Color, Form, Icon, List, showToast, Toast, useNavigation } from "@raycast/api";
 import { useMemo, useState } from "react";
 import { usePromise } from "@raycast/utils";
 import {
+  AgentSkillsTarget,
   AgentSkillsSyncStatus,
   detectAgentSkillsTargets,
   getAgentSkillsSyncStatus,
@@ -18,10 +19,12 @@ interface SyncOverviewData {
   statuses: AgentSkillsSyncStatus[];
   tagsCount: Array<{ tag: string; count: number }>;
   autoImported: number;
+  autoUpdated: number;
+  autoScanned: number;
 }
 
 async function loadSyncOverview(): Promise<SyncOverviewData> {
-  const bootstrap = await importMissingSkillsFromAgents();
+  const bootstrap = await importMissingSkillsFromAgents({ updateExisting: true });
   const centralPath = getCentralSkillsPath();
   const centralSkills = (await listSkillFolders(centralPath)).filter((skill) => skill.hasSkillMd);
   const targets = await detectAgentSkillsTargets();
@@ -43,6 +46,8 @@ async function loadSyncOverview(): Promise<SyncOverviewData> {
     statuses,
     tagsCount,
     autoImported: bootstrap.imported,
+    autoUpdated: bootstrap.updated,
+    autoScanned: bootstrap.scanned,
   };
 }
 
@@ -57,8 +62,76 @@ function formatSkillList(title: string, items: string[]): string {
   return `### ${title}\n\n${items.map((item) => `- ${item}`).join("\n")}\n`;
 }
 
+interface SelectTargetsFormValues {
+  targets: string[];
+}
+
+function SelectTargetsForm({
+  statuses,
+  onSubmit,
+  isSyncing,
+}: {
+  statuses: AgentSkillsSyncStatus[];
+  onSubmit: (targets: AgentSkillsTarget[]) => Promise<boolean>;
+  isSyncing: boolean;
+}) {
+  const { pop } = useNavigation();
+
+  const selectable = useMemo(
+    () =>
+      statuses
+        .filter((status) => status.target.installed)
+        .slice()
+        .sort((a, b) => a.target.label.localeCompare(b.target.label)),
+    [statuses],
+  );
+
+  async function handleSubmit(values: SelectTargetsFormValues) {
+    const selected = selectable
+      .filter((status) => values.targets.includes(status.target.id))
+      .map((status) => status.target);
+    if (selected.length === 0) {
+      await showToast({ style: Toast.Style.Failure, title: "Select at least one agent" });
+      return;
+    }
+
+    const didSync = await onSubmit(selected);
+    if (didSync) {
+      pop();
+    }
+  }
+
+  return (
+    <Form
+      isLoading={isSyncing}
+      navigationTitle="Select Agents to Sync"
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Run Full Sync" icon={Icon.ArrowClockwise} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.TagPicker id="targets" title="Agents" defaultValue={selectable.map((status) => status.target.id)}>
+        {selectable.map((status) => (
+          <Form.TagPicker.Item
+            key={status.target.id}
+            value={status.target.id}
+            title={status.target.label}
+            icon={status.target.id === "codex" ? Icon.Bolt : Icon.CodeBlock}
+          />
+        ))}
+      </Form.TagPicker>
+      <Form.Description
+        title="What this does"
+        text="Merges skills from selected agents into central (copy/update), then links all central skills back to the selected agents."
+      />
+    </Form>
+  );
+}
+
 export default function SyncSkills() {
   const [isSyncing, setIsSyncing] = useState(false);
+  const { push } = useNavigation();
 
   const { data, isLoading, revalidate: refresh } = usePromise(async () => loadSyncOverview(), []);
 
@@ -114,21 +187,53 @@ export default function SyncSkills() {
     }
   }
 
-  async function handleImportMissing() {
+  async function runFullSync(selectedTargets: AgentSkillsTarget[], title: string): Promise<boolean> {
+    if (selectedTargets.length === 0) {
+      await showToast({ style: Toast.Style.Failure, title: "No agents selected" });
+      return false;
+    }
+
     setIsSyncing(true);
-    const toast = await showToast({ style: Toast.Style.Animated, title: "Importing missing skills from agents..." });
+    const toast = await showToast({ style: Toast.Style.Animated, title });
     try {
-      const result = await importMissingSkillsFromAgents();
+      const mergeResult = await importMissingSkillsFromAgents({ targets: selectedTargets, updateExisting: true });
+      const centralSkillNames = (await listSkillFolders(getCentralSkillsPath()))
+        .filter((skill) => skill.hasSkillMd)
+        .map((skill) => skill.name);
+      const syncResult = await syncSelectedSkillsToAgents(centralSkillNames, selectedTargets);
+
+      await toast.hide();
+      await showToast({
+        style: mergeResult.errors.length + syncResult.errors.length > 0 ? Toast.Style.Failure : Toast.Style.Success,
+        title: "Full sync complete",
+        message: `${mergeResult.imported} imported, ${mergeResult.updated} updated, ${syncResult.linked} linked`,
+      });
+      await refresh();
+      return true;
+    } catch (err) {
+      await toast.hide();
+      await showToast({ style: Toast.Style.Failure, title: "Full sync failed", message: String(err) });
+      return false;
+    } finally {
+      setIsSyncing(false);
+    }
+  }
+
+  async function handleMergeIntoCentral() {
+    setIsSyncing(true);
+    const toast = await showToast({ style: Toast.Style.Animated, title: "Merging agent skills into central..." });
+    try {
+      const result = await importMissingSkillsFromAgents({ updateExisting: true });
       await toast.hide();
       await showToast({
         style: result.errors.length > 0 ? Toast.Style.Failure : Toast.Style.Success,
-        title: "Import complete",
-        message: `${result.imported} imported from ${result.scanned} scanned`,
+        title: "Merge complete",
+        message: `${result.imported} imported, ${result.updated} updated`,
       });
       await refresh();
     } catch (err) {
       await toast.hide();
-      await showToast({ style: Toast.Style.Failure, title: "Import failed", message: String(err) });
+      await showToast({ style: Toast.Style.Failure, title: "Merge failed", message: String(err) });
     } finally {
       setIsSyncing(false);
     }
@@ -159,20 +264,43 @@ export default function SyncSkills() {
                 `- Installed agents: ${totalInstalledAgents}\n` +
                 `- Missing links: ${totalMissing}\n` +
                 `- Extra agent skills: ${totalExtra}\n` +
-                `- Auto-imported this refresh: ${data?.autoImported ?? 0}\n`
+                `- Auto-merged this refresh: ${data?.autoImported ?? 0} imported, ${data?.autoUpdated ?? 0} updated (from ${data?.autoScanned ?? 0} scanned)\n`
               }
             />
           }
           actions={
             <ActionPanel>
               <Action
-                title="Sync All Skills to Installed Agents"
+                title="Run Full Sync for All Installed Agents"
                 icon={Icon.ArrowClockwise}
+                onAction={() =>
+                  runFullSync(
+                    installedStatuses.map((status) => status.target),
+                    "Running full sync...",
+                  )
+                }
+              />
+              <Action
+                title="Run Full Sync for Selected Agents"
+                icon={Icon.List}
+                onAction={() =>
+                  push(
+                    <SelectTargetsForm
+                      statuses={data?.statuses ?? []}
+                      isSyncing={isSyncing}
+                      onSubmit={async (targets) => runFullSync(targets, "Running full sync...")}
+                    />,
+                  )
+                }
+              />
+              <Action title="Merge Agent Skills into Central" icon={Icon.Download} onAction={handleMergeIntoCentral} />
+              <Action
+                title="Sync All Central Skills to Installed Agents"
+                icon={Icon.Link}
                 onAction={() =>
                   syncSkills(data?.centralSkillNames ?? [], installedStatuses, "Syncing all central skills...")
                 }
               />
-              <Action title="Import Missing Skills from Agents" icon={Icon.Download} onAction={handleImportMissing} />
               <Action
                 title="Refresh"
                 icon={Icon.ArrowClockwise}
@@ -227,8 +355,17 @@ export default function SyncSkills() {
                   <ActionPanel>
                     {status.target.installed ? (
                       <Action
-                        title={`Sync All to ${status.target.label}`}
+                        title={`Run Full Sync with ${status.target.label}`}
                         icon={Icon.ArrowClockwise}
+                        onAction={() =>
+                          runFullSync([status.target], `Running full sync with ${status.target.label}...`)
+                        }
+                      />
+                    ) : null}
+                    {status.target.installed ? (
+                      <Action
+                        title={`Sync Central Skills to ${status.target.label}`}
+                        icon={Icon.Link}
                         onAction={() =>
                           syncSkills(
                             data?.centralSkillNames ?? [],
@@ -252,9 +389,9 @@ export default function SyncSkills() {
                       />
                     ) : null}
                     <Action
-                      title="Import Missing Skills from Agents"
+                      title="Merge Agent Skills into Central"
                       icon={Icon.Download}
-                      onAction={handleImportMissing}
+                      onAction={handleMergeIntoCentral}
                     />
                     <Action
                       title="Refresh"
@@ -282,9 +419,9 @@ export default function SyncSkills() {
               actions={
                 <ActionPanel>
                   <Action
-                    title="Import Missing Skills from Agents"
+                    title="Merge Agent Skills into Central"
                     icon={Icon.Download}
-                    onAction={handleImportMissing}
+                    onAction={handleMergeIntoCentral}
                   />
                   <Action
                     title="Refresh"

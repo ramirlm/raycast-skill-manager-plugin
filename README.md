@@ -14,23 +14,22 @@ Skills are symlinked to maintain compatibility with Codex and other agents.
 
 ### Commands
 
-| Command                         | Description                                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------------------------------- |
-| **List Skills**                 | Browse, search, and manage all skills. Supports creating Raycast snippets and copying skill text. |
-| **Add Skill**                   | Create a new skill or edit an existing one with a name, Markdown description, and optional tags.  |
-| **Distribute Skills**           | Inject your skills into one or more coding-agent config files inside any project directory.       |
-| **Import Skill from GitHub**    | Import skill folders or SKILL.md files directly from GitHub repositories.                         |
-| **Import GitHub Repo as Skill** | Transform a GitHub repository into a skill using `opensrc` and import it into the central folder. |
-| **Sync Skills**                 | Sync skills from Codex to central folder and create symlinks for bi-directional compatibility.    |
-| **Manage Agents**               | View detected agents, skill folders, and their status across your system.                         |
+| Command                         | Description                                                                                         |
+| ------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **List Skills**                 | Browse, search, and manage all skills. Supports creating Raycast snippets and copying skill text.   |
+| **Add Skill**                   | Create a new skill or edit an existing one with a name, Markdown description, and optional tags.    |
+| **Import Skill from GitHub**    | Import skill folders or SKILL.md files directly from GitHub repositories.                           |
+| **Import GitHub Repo as Skill** | Transform a GitHub repository into a skill using `opensrc` and import it into the central folder.   |
+| **Sync Skills**                 | Merge skills from agents into central and sync central skills to selected agents (including Codex). |
+| **Manage Agents**               | View detected agents, skill folders, and their status across your system.                           |
 
-### Supported Coding Agent Targets
+### Supported Sync Targets
 
-- **Cursor** – `.cursorrules`
-- **Windsurf** – `.windsurfrules`
-- **GitHub Copilot** – `.github/copilot-instructions.md`
-- **Claude** – `CLAUDE.md`
-- **Aider** – `.aider.conf.yml`
+- **Codex** – `~/.codex/skills` (configurable)
+- **Claude** – `~/.claude/skills`
+- **Cursor** – `~/.cursor/skills`
+- **VS Code** – `~/.vscode/skills`
+- **Warp** – `~/.warp/skills`
 
 ## skills.md Format
 
@@ -77,11 +76,12 @@ Select a skill in the **List Skills** command and press **⌘S** to generate a R
    - `owner/repo/path/to/skill` (shorthand)
 2. Skills are downloaded to central folder and optionally linked to Codex
 
-### Distribute to Projects
+### Sync to Selected Agents
 
-1. Run **Distribute Skills** to inject skills into project config files
-2. Select target agents (Cursor, Windsurf, GitHub Copilot, Claude, Aider)
-3. Skills are added with managed comment blocks for easy updates
+1. Run **Sync Skills**
+2. Choose **Run Full Sync (Select Agents)**
+3. Select your targets by checkbox (Codex included)
+4. The command merges `agents -> central` and then links `central -> selected agents`
 
 ## Development
 

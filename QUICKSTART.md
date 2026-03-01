@@ -3,7 +3,9 @@
 ## First Time Setup
 
 ### 1. Sync Your Existing Skills
+
 Run the **Sync Skills** command from Raycast to:
+
 - Copy your existing skills from `~/.codex/skills` to `~/agents/skills`
 - Create symlinks to maintain compatibility with Codex
 
@@ -14,7 +16,9 @@ Run the **Sync Skills** command from Raycast to:
 ```
 
 ### 2. Verify Setup
+
 Run **Manage Agents** to see:
+
 - All skills in your central folder
 - All skills in your Codex folder (now symlinks)
 - Validation status of each skill
@@ -36,6 +40,7 @@ Run **Manage Agents** to see:
 4. Hit Enter
 
 The skill is now:
+
 - ✅ Stored in `~/agents/skills/my-skill/`
 - ✅ Linked from `~/.codex/skills/my-skill/`
 - ✅ Available to all your coding agents
@@ -48,28 +53,25 @@ The skill is now:
 4. Paste the deeplink in your browser
 5. Skill is now a snippet with keyword `!skill-name`
 
-### Distribute Skills to a Project
+### Sync Skills to Selected Agents
 
-1. Open Raycast → **Distribute Skills**
-2. Enter project path: `~/projects/my-app`
-3. Select target agents:
-   - ✓ Cursor (.cursorrules)
-   - ✓ Windsurf (.windsurfrules)
-   - ✓ GitHub Copilot (.github/copilot-instructions.md)
-   - ✓ Claude (CLAUDE.md)
-   - ✓ Aider (.aider.conf.yml)
+1. Open Raycast → **Sync Skills**
+2. Choose **Run Full Sync (Select Agents)**
+3. Select the targets you want (Codex included)
 4. Hit Enter
 
-Skills are now injected into your project's agent config files!
+The sync merges non-synced skills into central and then links central skills back to the selected agents.
 
 ## Pro Tips
 
 ### GitHub Private Repositories
+
 1. Open Raycast Settings → Extensions → Skill Manager
 2. Add your GitHub Personal Access Token
 3. Now you can import skills from private repos
 
 ### Organizing Skills
+
 ```
 ~/agents/skills/
 ├── typescript/          # Language-specific skills
@@ -85,7 +87,9 @@ Skills are now injected into your project's agent config files!
 ```
 
 ### Keeping Skills Updated
+
 Skills are stored as folders, so you can:
+
 - Edit them directly in `~/agents/skills/`
 - Use git to version control your skills folder
 - Share your entire skills folder with teammates
@@ -93,17 +97,20 @@ Skills are stored as folders, so you can:
 ### Troubleshooting
 
 **Skills not showing in Codex?**
+
 - Run **Sync Skills** again to recreate symlinks
 
 **Import fails from GitHub?**
+
 - Check the URL format
 - Add GitHub token for private repos
 - Verify SKILL.md exists in the target folder
 
-**Skills not distributing?**
-- Verify project path is correct
+**Skills not syncing to an agent?**
+
+- Confirm the target agent path exists (or run sync once to create folders/symlinks)
 - Check file permissions
-- Look for errors in the distribution result
+- Run **Sync Skills** again and inspect the toast result
 
 ## Next Steps
 
@@ -138,12 +145,12 @@ GitHub Repository
       ↓ (symlinks)
 ~/.codex/skills/          ← Codex Integration
       ↓
-[ Distribute Skills ]
+[ Sync Skills ]
       ↓
-Project Config Files
-  ├── .cursorrules
-  ├── .windsurfrules
-  ├── .github/copilot-instructions.md
-  ├── CLAUDE.md
-  └── .aider.conf.yml
+Agent Skill Folders
+  ├── ~/.codex/skills
+  ├── ~/.claude/skills
+  ├── ~/.cursor/skills
+  ├── ~/.vscode/skills
+  └── ~/.warp/skills
 ```

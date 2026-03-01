@@ -26,8 +26,6 @@ declare namespace Preferences {
   export type ListSkills = ExtensionPreferences & {}
   /** Preferences accessible in the `add-skill` command */
   export type AddSkill = ExtensionPreferences & {}
-  /** Preferences accessible in the `distribute-skills` command */
-  export type DistributeSkills = ExtensionPreferences & {}
   /** Preferences accessible in the `import-skill-from-github` command */
   export type ImportSkillFromGithub = ExtensionPreferences & {}
   /** Preferences accessible in the `import-github-repo-as-skill` command */
@@ -43,8 +41,6 @@ declare namespace Arguments {
   export type ListSkills = {}
   /** Arguments passed to the `add-skill` command */
   export type AddSkill = {}
-  /** Arguments passed to the `distribute-skills` command */
-  export type DistributeSkills = {}
   /** Arguments passed to the `import-skill-from-github` command */
   export type ImportSkillFromGithub = {}
   /** Arguments passed to the `import-github-repo-as-skill` command */

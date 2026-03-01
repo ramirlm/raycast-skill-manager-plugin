@@ -71,7 +71,7 @@ export default function AddSkill({ existingSkill, onSave }: Props) {
         placeholder="Describe the skill, best practices, rules, or notes…"
         defaultValue={existingSkill?.description ?? ""}
         enableMarkdown
-        info="Supports Markdown. This content will be distributed to coding agent config files."
+        info="Supports Markdown. This content is stored in central and synced to selected coding agents."
       />
       <Form.TextField
         id="tags"

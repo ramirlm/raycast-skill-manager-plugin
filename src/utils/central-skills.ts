@@ -83,8 +83,8 @@ export async function detectAgentSkillsTargets(): Promise<AgentSkillsTarget[]> {
   for (const candidate of AGENT_SKILLS_TARGETS) {
     const resolvedRootPath = expandPath(candidate.rootPath);
     const rootPath = candidate.id === "codex" ? path.dirname(codexSkillsPath) : resolvedRootPath;
-    const installed = await pathExists(rootPath);
     const skillsPath = candidate.id === "codex" ? codexSkillsPath : path.join(rootPath, "skills");
+    const installed = candidate.id === "codex" ? true : await pathExists(rootPath);
 
     targets.push({
       id: candidate.id,
@@ -106,9 +106,15 @@ export interface AgentSyncResult {
 
 export interface ImportFromAgentsResult {
   imported: number;
+  updated: number;
   scanned: number;
   errors: string[];
   byAgent: Record<string, number>;
+}
+
+interface ImportFromAgentsOptions {
+  targets?: AgentSkillsTarget[];
+  updateExisting?: boolean;
 }
 
 export interface AgentSkillsSyncStatus {
@@ -344,21 +350,31 @@ export async function syncSelectedSkillsToAgents(
  * Import missing skills from detected installed agents into central folder.
  * Central folder remains source of truth after this bootstrap/merge step.
  */
-export async function importMissingSkillsFromAgents(): Promise<ImportFromAgentsResult> {
+export async function importMissingSkillsFromAgents(
+  options: ImportFromAgentsOptions = {},
+): Promise<ImportFromAgentsResult> {
+  const { targets: targetsInput, updateExisting = false } = options;
   const centralPath = getCentralSkillsPath();
   await ensureCentralSkillsFolder();
 
-  const targets = (await detectAgentSkillsTargets()).filter((target) => target.installed);
+  const targets = (targetsInput ?? (await detectAgentSkillsTargets()))
+    .filter((target) => target.installed)
+    .sort((a, b) => {
+      if (a.id === "codex") return -1;
+      if (b.id === "codex") return 1;
+      return a.label.localeCompare(b.label);
+    });
   const centralSkills = await listSkillFolders(centralPath);
   const centralSkillMap = new Map(centralSkills.map((skill) => [normalizeName(skill.name), skill]));
 
   let imported = 0;
+  let updated = 0;
   let scanned = 0;
   const errors: string[] = [];
   const byAgent: Record<string, number> = {};
 
   for (const target of targets) {
-    byAgent[target.id] = 0;
+    let mergedForAgent = 0;
     const sourceSkills = await listSkillFolders(target.skillsPath);
 
     for (const sourceSkill of sourceSkills) {
@@ -368,23 +384,39 @@ export async function importMissingSkillsFromAgents(): Promise<ImportFromAgentsR
       }
 
       const key = normalizeName(sourceSkill.name);
-      if (centralSkillMap.has(key)) {
+      const centralSkill = centralSkillMap.get(key);
+      if (centralSkill?.hasSkillMd && !updateExisting) {
         continue;
       }
 
-      const destination = path.join(centralPath, sourceSkill.name);
       try {
-        await copySkillFolder(sourceSkill.path, destination, false);
-        imported++;
-        byAgent[target.id] += 1;
-        centralSkillMap.set(key, { name: sourceSkill.name, path: destination, hasSkillMd: true });
+        if (!centralSkill || !centralSkill.hasSkillMd) {
+          const destinationName = centralSkill?.name ?? sourceSkill.name;
+          const destination = path.join(centralPath, destinationName);
+          await copySkillFolder(sourceSkill.path, destination, true);
+          imported++;
+          mergedForAgent += 1;
+          centralSkillMap.set(key, { name: destinationName, path: destination, hasSkillMd: true });
+          continue;
+        }
+
+        const alreadySynced = await isAgentSkillSyncedToCentral(sourceSkill.path, centralSkill.path);
+        if (alreadySynced) {
+          continue;
+        }
+
+        await copySkillFolder(sourceSkill.path, centralSkill.path, true);
+        updated++;
+        mergedForAgent += 1;
       } catch (err) {
         errors.push(`${target.label}/${sourceSkill.name}: ${String(err)}`);
       }
     }
+
+    byAgent[target.id] = mergedForAgent;
   }
 
-  return { imported, scanned, errors, byAgent };
+  return { imported, updated, scanned, errors, byAgent };
 }
 
 /**
